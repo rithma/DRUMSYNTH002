@@ -298,11 +298,11 @@ class DrumGUI:
         noise_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
         noise_frame.columnconfigure(1, weight=1)
 
-        self.nl = tk.DoubleVar(value=0.7)
-        self.nf = tk.DoubleVar(value=0.6)
-        self.nq = tk.DoubleVar(value=0.5)
+        self.nl = tk.DoubleVar(value=0.1)
+        self.nf = tk.DoubleVar(value=0.3)
+        self.nq = tk.DoubleVar(value=0.3)
         self.na = tk.DoubleVar(value=0.0)
-        self.nd = tk.DoubleVar(value=0.2)
+        self.nd = tk.DoubleVar(value=0.08)
 
         ttk.Label(noise_frame, text="Noise Level").grid(row=0, column=0, sticky="w")
         tk.Scale(noise_frame, from_=0, to=1, resolution=0.01,

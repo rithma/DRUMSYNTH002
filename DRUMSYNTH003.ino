@@ -89,7 +89,8 @@ const int TRIG_SNARE = 3;
 
 // ---------- Globals ----------
 
-float masterGain = 0.12f;   // global output trim
+float masterGain = 0.12f;   // global output trim (target value)
+float masterGainSmooth = 0.12f;  // smoothed version to prevent clicks
 const float mixFinalBaseGains[4] = {0.7f, 0.4f, 0.4f, 0.6f};
 
 // Oscillator levels
@@ -258,7 +259,7 @@ float computePitchFreq(const PitchEnv &p, float tMs) {
   // attack: 0..60 ms
   // decay:  10..1000 ms
   // amount: 0..1500 Hz
-  // extend: 0 -> short, 1 -> long
+  // extend: 0 -> no drop, 1 -> slow decay below base pitch to tail
 
   float baseHz = 10.0f + p.base * 190.0f;
   float atkMs  = p.attack * 200.0f;
@@ -267,7 +268,7 @@ float computePitchFreq(const PitchEnv &p, float tMs) {
 
   if (decMs < 1.0f) decMs = 1.0f;
 
-  // Base attack/decay envelope
+  // Base attack/decay envelope (amount is NOT affected by extend)
   float env = 0.0f;
   if (tMs < atkMs && atkMs > 0.0f) {
     env = tMs / atkMs;  // 0->1
@@ -280,13 +281,38 @@ float computePitchFreq(const PitchEnv &p, float tMs) {
     }
   }
 
-  // Extend factor: higher = longer tail
-  float extFactor = 0.5f + p.extend * 4.5f;   // 0.5..5x
-  float tail = expf(-tMs / (decMs * extFactor));
-  env *= tail;
-
+  // Main pitch from envelope (extend does NOT affect this)
   float freq = baseHz + env * amtHz;
-  if (freq < 5.0f) freq = 5.0f;               // Clamp (Option D)
+
+  // Extend: sweep from normal pitch (base) down to lower pitch over extended tail
+  // Starts AFTER the main decay finishes, sweeps from baseHz to (baseHz - dropAmount)
+  if (p.extend > 0.001f) {
+    // When main envelope finishes (returns to base pitch)
+    float mainEnvEndMs = atkMs + decMs;
+    
+    // Extended tail time: much longer than main decay
+    float extTailMs = decMs * (2.0f + p.extend * 8.0f);  // 2x to 10x longer
+    
+    // Drop amount: how far below base to sweep
+    float dropAmount = baseHz * p.extend * 0.8f;  // drop up to 80% of base pitch
+    
+    // Start the sweep after main decay finishes
+    if (tMs > mainEnvEndMs) {
+      // Time since sweep started
+      float sweepTime = tMs - mainEnvEndMs;
+      
+      // Sweep envelope: 0 (at start) to 1 (at end of tail)
+      // Smooth exponential curve for gradual sweep
+      float sweepEnv = 1.0f - expf(-sweepTime / (extTailMs * 0.6f));
+      
+      // Sweep from baseHz down to (baseHz - dropAmount)
+      // At start: freq = baseHz (normal pitch after decay)
+      // At end: freq = baseHz - dropAmount (lower pitch)
+      freq = baseHz - (dropAmount * sweepEnv);
+    }
+  }
+
+  if (freq < 5.0f) freq = 5.0f;  // Safety clamp
   return freq;
 }
 
@@ -500,8 +526,11 @@ void setup() {
   }
   oscDrive.shape(initOscShape, 257);
 
+  // Initialize smoothed master gain
+  masterGainSmooth = masterGain;
+  
   // Final mix gains
-  float gainTrimInit = masterGain * masterGain;
+  float gainTrimInit = masterGainSmooth * masterGainSmooth;
   mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimInit);  // kick body
   mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimInit);  // kick noise
   mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimInit);  // snare tone
@@ -552,12 +581,13 @@ void loop() {
   oscTri2.frequency(f3);
 
   // Stop pitch env after a while (avoid wasting CPU)
+  // Account for extended tail: 2x to 10x longer than main decay
   float maxDec = 0.0f;
   for (int i = 0; i < 4; i++) {
     float dMs = 10.0f + oscEnv[i].decay * 990.0f;
-    float extFactor = 0.5f + oscEnv[i].extend * 4.5f;
-    float eff = dMs * extFactor;
-    if (eff > maxDec) maxDec = eff;
+    // New extend: tail is 2x to 10x longer than decay
+    float extTailMs = dMs * (2.0f + oscEnv[i].extend * 8.0f);
+    if (extTailMs > maxDec) maxDec = extTailMs;
   }
   if (pitchEnvActive && tMs > (maxDec + 200.0f)) {
     pitchEnvActive = false;
@@ -695,7 +725,17 @@ void loop() {
   mixBody.gain(3, tri2LevelNorm     * 0.6f);
 
   // Update final mix gains to follow master volume
-  float gainTrimLive = masterGain * masterGain;
+  // Smooth master gain to prevent clicks when dragging slider
+  // Interpolate toward target at ~10ms time constant (smooth but responsive)
+  float smoothRate = 0.15f;  // adjust this: higher = faster, lower = smoother
+  float diff = masterGain - masterGainSmooth;
+  if (fabsf(diff) > 0.0001f) {  // only update if there's a meaningful difference
+    masterGainSmooth += diff * smoothRate;
+  } else {
+    masterGainSmooth = masterGain;  // snap to target when very close
+  }
+  
+  float gainTrimLive = masterGainSmooth * masterGainSmooth;
   mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimLive);
   mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimLive);
   mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimLive);
