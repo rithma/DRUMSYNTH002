@@ -167,7 +167,7 @@ static inline float computeSimpleAD(float tMs, float attackMs, float decayMs) {
   return 0.0f;
 }
 
-// Drive curve
+// Drive curve - High quality asymmetric distortion
 void updateDriveCurve() {
   // DR = 0 -> y = x (clean)
   if (driveNorm <= 0.001f) {
@@ -179,16 +179,54 @@ void updateDriveCurve() {
     return;
   }
 
-  // DR > 0 -> soft clipping tanh
-  float d = 1.0f + driveNorm * 9.0f;   // gain 1..10
-  float norm = tanhf(d);
-  if (norm < 0.0001f) norm = 0.0001f;
+  // High-quality distortion with asymmetric soft clipping
+  // Drive amount controls both gain and saturation character
+  float driveAmount = driveNorm;
+  
+  // Gain staging: more subtle at low drive, aggressive at high
+  float preGain = 1.0f + driveAmount * 12.0f;  // 1x to 13x
+  
+  // Asymmetry factor: slight asymmetry adds character (tube-like)
+  float asymmetry = 0.85f + driveAmount * 0.15f;  // 0.85 to 1.0
+  
+  // Normalization target for consistent output level
+  float testInput = 0.8f;  // test at 80% to avoid edge cases
+  float testPos = tanhf(preGain * testInput) / (1.0f + fabsf(testInput * preGain * 0.3f));
+  float testNeg = tanhf(preGain * testInput * asymmetry) / (1.0f + fabsf(testInput * preGain * asymmetry * 0.3f));
+  float maxTest = (fabsf(testPos) > fabsf(testNeg)) ? fabsf(testPos) : fabsf(testNeg);
+  float normScale = 1.0f / maxTest;
+  if (normScale > 2.0f) normScale = 2.0f;  // prevent excessive gain
 
   for (int i = 0; i < 257; i++) {
     float x = (float(i) - 128.0f) / 128.0f;  // -1..+1
-    float y = tanhf(d * x) / norm;
+    
+    // Apply pre-gain
+    float driven = x * preGain;
+    
+    // Asymmetric soft clipping: different curves for positive/negative
+    float y;
+    if (driven >= 0.0f) {
+      // Positive: standard tanh with gentle compression
+      y = tanhf(driven) / (1.0f + fabsf(driven) * 0.3f);
+    } else {
+      // Negative: asymmetric curve (slightly different response)
+      float asymDriven = driven * asymmetry;
+      y = tanhf(asymDriven) / (1.0f + fabsf(asymDriven) * 0.35f);
+    }
+    
+    // Apply normalization to maintain output level
+    y *= normScale;
+    
+    // Add subtle harmonic enhancement at medium-high drive
+    if (driveAmount > 0.3f) {
+      float harmonic = sinf(x * 3.14159f) * 0.08f * driveAmount;
+      y += harmonic * (1.0f - fabsf(x));
+    }
+    
+    // Safety clamp
     if (y > 1.0f)  y = 1.0f;
     if (y < -1.0f) y = -1.0f;
+    
     driveTable[i] = y;
   }
   driveFX.shape(driveTable, 257);
