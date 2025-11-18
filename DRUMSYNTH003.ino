@@ -468,8 +468,15 @@ void setup() {
   // --- OSC filter / drive initial setup ---
   oscFilter.frequency(800.0f);     // just a starting value
   oscFilter.resonance(1.0f);
-  oscFilter.octaveControl(3.0f);   // wide sweep range, we’ll still update every loop
+  oscFilter.octaveControl(3.0f);   // wide sweep range, we'll still update every loop
 
+  // Initialize OSC waveshaper with identity table (clean pass-through)
+  float initOscShape[257];
+  for (int i = 0; i < 257; i++) {
+    float x = (float(i) - 128.0f) / 128.0f;  // -1..+1
+    initOscShape[i] = x;
+  }
+  oscDrive.shape(initOscShape, 257);
 
   // Final mix gains
   mixFinal.gain(0, 0.7f * masterGain);  // kick body
@@ -585,14 +592,37 @@ void loop() {
   float drive = oscDistNorm;
 
   static float oscShape[257];
+  static float lastDrive = -1.0f;  // Track previous drive value
 
   if (drive < 0.001f) {
     // Identity waveshape: y = x (completely clean)
-    for (int i = 0; i < 257; i++) {
-      float x = (float(i) - 128.0f) / 128.0f;  // -1..+1
-      oscShape[i] = x;
+    // Only recalculate if drive changed from non-zero to zero
+    if (lastDrive >= 0.001f || lastDrive < 0.0f) {
+      // Ensure perfect linear mapping to avoid discontinuities
+      for (int i = 0; i < 257; i++) {
+        float x = (float(i) - 128.0f) / 128.0f;  // -1..+1
+        // Ensure exact linear mapping with proper bounds
+        oscShape[i] = x;
+      }
+      oscDrive.shape(oscShape, 257);
     }
-  } else {
+    lastDrive = drive;
+    // Skip the rest of distortion calculation
+    envNoise.attack(nAttackMs);
+    envNoise.decay(nDecayMs);
+    envNoise.sustain(0.0f);
+    envNoise.release(0.0f);
+    
+    // Update body mixer from level controls
+    mixBody.gain(0, kickOsc1LevelNorm * 0.6f);
+    mixBody.gain(1, kickOsc2LevelNorm * 0.6f);
+    mixBody.gain(2, tri1LevelNorm     * 0.6f);
+    mixBody.gain(3, tri2LevelNorm     * 0.6f);
+    return;  // Early return to avoid recalculating
+  }
+  
+  // Non-zero drive: apply distortion
+  {
     // Pregain: how hard we hit the nonlinearity
     float pregain  = 1.0f + drive * 14.0f;       // up to ~15x
     // Postgain: keep overall loudness from exploding
@@ -622,9 +652,13 @@ void loop() {
 
       oscShape[i] = z;
     }
+    
+    // Update waveshaper when drive changes
+    if (fabsf(drive - lastDrive) > 0.001f) {
+      oscDrive.shape(oscShape, 257);
+    }
+    lastDrive = drive;
   }
-
-  oscDrive.shape(oscShape, 257);
 
   envNoise.attack(nAttackMs);
   envNoise.decay(nDecayMs);
