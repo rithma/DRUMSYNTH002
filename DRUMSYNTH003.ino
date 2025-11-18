@@ -90,6 +90,7 @@ const int TRIG_SNARE = 3;
 // ---------- Globals ----------
 
 float masterGain = 0.12f;   // global output trim
+const float mixFinalBaseGains[4] = {0.7f, 0.4f, 0.4f, 0.6f};
 
 // Oscillator levels
 float kickOsc1LevelNorm = 1.0f; // K1 – Sine A
@@ -183,8 +184,8 @@ void updateDriveCurve() {
   // Drive amount controls both gain and saturation character
   float driveAmount = driveNorm;
   
-  // Gain staging: more subtle at low drive, aggressive at high
-  float preGain = 1.0f + driveAmount * 12.0f;  // 1x to 13x
+  // Gain staging: keep range musical (less raw level jump)
+  float preGain = 1.0f + driveAmount * 8.0f;  // 1x to 9x
   
   // Asymmetry factor: slight asymmetry adds character (tube-like)
   float asymmetry = 0.85f + driveAmount * 0.15f;  // 0.85 to 1.0
@@ -196,6 +197,8 @@ void updateDriveCurve() {
   float maxTest = (fabsf(testPos) > fabsf(testNeg)) ? fabsf(testPos) : fabsf(testNeg);
   float normScale = 1.0f / maxTest;
   if (normScale > 2.0f) normScale = 2.0f;  // prevent excessive gain
+
+  float sumSquares = 0.0f;
 
   for (int i = 0; i < 257; i++) {
     float x = (float(i) - 128.0f) / 128.0f;  // -1..+1
@@ -228,6 +231,22 @@ void updateDriveCurve() {
     if (y < -1.0f) y = -1.0f;
     
     driveTable[i] = y;
+    sumSquares += y * y;
+  }
+
+  // Loudness compensation: aim for roughly constant RMS regardless of drive
+  float rms = (sumSquares > 0.0f) ? sqrtf(sumSquares / 257.0f) : 0.0f;
+  float targetRms = 0.25f;  // lower target to tame high settings
+  float postScale = (rms > 0.0001f) ? (targetRms / rms) : 1.0f;
+  if (postScale > 1.0f) postScale = 1.0f;          // avoid boosting
+  if (postScale < 0.2f) postScale = 0.2f;          // strong attenuation at high drive
+
+  if (fabsf(postScale - 1.0f) > 0.01f) {
+    for (int i = 0; i < 257; i++) {
+      driveTable[i] *= postScale;
+      if (driveTable[i] > 1.0f)  driveTable[i] = 1.0f;
+      if (driveTable[i] < -1.0f) driveTable[i] = -1.0f;
+    }
   }
   driveFX.shape(driveTable, 257);
 }
@@ -307,6 +326,9 @@ void parseSerialLine(const String &line) {
   else if (c0 == 'N' && c1 == 'Q') noiseResonanceNorm= val;
   else if (c0 == 'N' && c1 == 'A') noiseAttackNorm   = val;
   else if (c0 == 'N' && c1 == 'D') noiseDecayNorm    = val;
+
+  // Master volume
+  else if (c0 == 'M' && c1 == 'V') masterGain = val;
 
    // --- OSC tone section ---
   else if (c0 == 'O' && c1 == 'C') oscCutoffNorm = val;   // cutoff
@@ -479,10 +501,11 @@ void setup() {
   oscDrive.shape(initOscShape, 257);
 
   // Final mix gains
-  mixFinal.gain(0, 0.7f * masterGain);  // kick body
-  mixFinal.gain(1, 0.4f * masterGain);  // kick noise
-  mixFinal.gain(2, 0.4f * masterGain);  // snare tone
-  mixFinal.gain(3, 0.6f * masterGain);  // snare noise
+  float gainTrimInit = masterGain * masterGain;
+  mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimInit);  // kick body
+  mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimInit);  // kick noise
+  mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimInit);  // snare tone
+  mixFinal.gain(3, mixFinalBaseGains[3] * gainTrimInit);  // snare noise
 
   // Initialize drive curve
   updateDriveCurve();
@@ -670,4 +693,11 @@ void loop() {
   mixBody.gain(1, kickOsc2LevelNorm * 0.6f);
   mixBody.gain(2, tri1LevelNorm     * 0.6f);
   mixBody.gain(3, tri2LevelNorm     * 0.6f);
+
+  // Update final mix gains to follow master volume
+  float gainTrimLive = masterGain * masterGain;
+  mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimLive);
+  mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimLive);
+  mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimLive);
+  mixFinal.gain(3, mixFinalBaseGains[3] * gainTrimLive);
 }

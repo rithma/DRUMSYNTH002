@@ -347,6 +347,7 @@ class DrumGUI:
         self.fa = tk.DoubleVar(value=0.0)   # filter env attack
         self.fd = tk.DoubleVar(value=0.4)   # filter env decay
         self.fm = tk.DoubleVar(value=0.5)   # filter env amount
+        self.mv = tk.DoubleVar(value=0.12)  # master volume
 
         oscTone_frame = ttk.LabelFrame(right_frame, text="OSC Tone (Post-Osc Mix)")
         oscTone_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
@@ -399,6 +400,15 @@ class DrumGUI:
 
         ttk.Button(rand_frame, text="Randomize Now",
                    command=self.randomize_params).grid(row=1, column=0, columnspan=2, pady=5)
+
+        volume_frame = ttk.LabelFrame(right_frame, text="Output")
+        volume_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=5)
+        volume_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(volume_frame, text="Main Volume").grid(row=0, column=0, sticky="w")
+        tk.Scale(volume_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.mv,
+                 command=self.on_mv).grid(row=0, column=1, sticky="ew")
 
         # ---------- SEND ALL BUTTON ----------
         btn_frame = ttk.Frame(root)
@@ -485,6 +495,7 @@ class DrumGUI:
         self.send_cmd("FA", self.fa.get())
         self.send_cmd("FD", self.fd.get())
         self.send_cmd("FM", self.fm.get())
+        self.send_cmd("MV", self.mv.get())
 
     # --------------- RANDOMIZATION (controlled) ---------------
 
@@ -542,6 +553,8 @@ class DrumGUI:
 
             # Filter Envelope
             (self.fa, "FA"), (self.fd, "FD"), (self.fm, "FM"),
+
+            # Master volume (optional for randomization?)
         ]
 
         for var, cmd in params:
@@ -617,6 +630,9 @@ class DrumGUI:
     def on_fa(self, _): self.send_cmd("FA", self.fa.get())
     def on_fd(self, _): self.send_cmd("FD", self.fd.get())
     def on_fm(self, _): self.send_cmd("FM", self.fm.get())
+
+    # Master volume
+    def on_mv(self, _): self.send_cmd("MV", self.mv.get())
 
     # fire the kick via serial (space bar)
     def on_space(self, event): self.send_cmd("TK", 1.0)
