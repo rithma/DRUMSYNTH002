@@ -58,6 +58,7 @@ class DrumGUI:
         ttk.Label(conn_frame, text="Port:").pack(side="left", padx=5)
         ttk.Entry(conn_frame, textvariable=self.port_var, width=28).pack(side="left", padx=5)
         ttk.Button(conn_frame, text="Connect", command=self.connect).pack(side="left", padx=5)
+        ttk.Button(conn_frame, text="Disconnect", command=self.disconnect).pack(side="left", padx=5)
 
         self.status_var = tk.StringVar(value="Not connected")
         ttk.Label(conn_frame, textvariable=self.status_var).pack(side="left", padx=10)
@@ -119,41 +120,41 @@ class DrumGUI:
                  orient="horizontal", variable=self.o0x,
                  command=self.on_o0x).grid(row=4, column=1, sticky="ew")
 
-        # ---------- TRI A PITCH (OSC 2) ----------
-        triA_frame = ttk.LabelFrame(left_frame, text="Tri A (Osc 2) Pitch Env")
-        triA_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
-        triA_frame.columnconfigure(1, weight=1)
+        # ---------- SINE B PITCH (OSC 1) ----------
+        sineB_frame = ttk.LabelFrame(left_frame, text="Sine B (Osc 1) Pitch Env")
+        sineB_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
+        sineB_frame.columnconfigure(1, weight=1)
 
-        self.o2b = tk.DoubleVar(value=0.10)
-        self.o2a = tk.DoubleVar(value=0.05)
-        self.o2d = tk.DoubleVar(value=0.10)
-        self.o2m = tk.DoubleVar(value=0.10)
-        self.o2x = tk.DoubleVar(value=0.10)
+        self.o1b = tk.DoubleVar(value=0.12)
+        self.o1a = tk.DoubleVar(value=0.14)
+        self.o1d = tk.DoubleVar(value=0.16)
+        self.o1m = tk.DoubleVar(value=0.15)
+        self.o1x = tk.DoubleVar(value=0.20)
 
-        ttk.Label(triA_frame, text="Base").grid(row=0, column=0, sticky="w")
-        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o2b,
-                 command=self.on_o2b).grid(row=0, column=1, sticky="ew")
+        ttk.Label(sineB_frame, text="Base").grid(row=0, column=0, sticky="w")
+        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o1b,
+                 command=self.on_o1b).grid(row=0, column=1, sticky="ew")
 
-        ttk.Label(triA_frame, text="Attack").grid(row=1, column=0, sticky="w")
-        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o2a,
-                 command=self.on_o2a).grid(row=1, column=1, sticky="ew")
+        ttk.Label(sineB_frame, text="Attack").grid(row=1, column=0, sticky="w")
+        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o1a,
+                 command=self.on_o1a).grid(row=1, column=1, sticky="ew")
 
-        ttk.Label(triA_frame, text="Decay").grid(row=2, column=0, sticky="w")
-        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o2d,
-                 command=self.on_o2d).grid(row=2, column=1, sticky="ew")
+        ttk.Label(sineB_frame, text="Decay").grid(row=2, column=0, sticky="w")
+        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o1d,
+                 command=self.on_o1d).grid(row=2, column=1, sticky="ew")
 
-        ttk.Label(triA_frame, text="Amount").grid(row=3, column=0, sticky="w")
-        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o2m,
-                 command=self.on_o2m).grid(row=3, column=1, sticky="ew")
+        ttk.Label(sineB_frame, text="Amount").grid(row=3, column=0, sticky="w")
+        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o1m,
+                 command=self.on_o1m).grid(row=3, column=1, sticky="ew")
 
-        ttk.Label(triA_frame, text="Extend").grid(row=4, column=0, sticky="w")
-        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o2x,
-                 command=self.on_o2x).grid(row=4, column=1, sticky="ew")
+        ttk.Label(sineB_frame, text="Extend").grid(row=4, column=0, sticky="w")
+        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o1x,
+                 command=self.on_o1x).grid(row=4, column=1, sticky="ew")
 
         # ---------- OSC MIX FRAME ----------
         mix_frame = ttk.LabelFrame(left_frame, text="Oscillator Mix")
@@ -221,41 +222,41 @@ class DrumGUI:
                  orient="horizontal", variable=self.ax,
                  command=self.on_ax).grid(row=3, column=1, sticky="ew")
 
-        # ---------- SINE B PITCH (OSC 1) ----------
-        sineB_frame = ttk.LabelFrame(center_frame, text="Sine B (Osc 1) Pitch Env")
-        sineB_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
-        sineB_frame.columnconfigure(1, weight=1)
+        # ---------- TRI A PITCH (OSC 2) ----------
+        triA_frame = ttk.LabelFrame(center_frame, text="Tri A (Osc 2) Pitch Env")
+        triA_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
+        triA_frame.columnconfigure(1, weight=1)
 
-        self.o1b = tk.DoubleVar(value=0.12)
-        self.o1a = tk.DoubleVar(value=0.14)
-        self.o1d = tk.DoubleVar(value=0.16)
-        self.o1m = tk.DoubleVar(value=0.15)
-        self.o1x = tk.DoubleVar(value=0.20)
+        self.o2b = tk.DoubleVar(value=0.10)
+        self.o2a = tk.DoubleVar(value=0.05)
+        self.o2d = tk.DoubleVar(value=0.10)
+        self.o2m = tk.DoubleVar(value=0.10)
+        self.o2x = tk.DoubleVar(value=0.10)
 
-        ttk.Label(sineB_frame, text="Base").grid(row=0, column=0, sticky="w")
-        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o1b,
-                 command=self.on_o1b).grid(row=0, column=1, sticky="ew")
+        ttk.Label(triA_frame, text="Base").grid(row=0, column=0, sticky="w")
+        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o2b,
+                 command=self.on_o2b).grid(row=0, column=1, sticky="ew")
 
-        ttk.Label(sineB_frame, text="Attack").grid(row=1, column=0, sticky="w")
-        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o1a,
-                 command=self.on_o1a).grid(row=1, column=1, sticky="ew")
+        ttk.Label(triA_frame, text="Attack").grid(row=1, column=0, sticky="w")
+        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o2a,
+                 command=self.on_o2a).grid(row=1, column=1, sticky="ew")
 
-        ttk.Label(sineB_frame, text="Decay").grid(row=2, column=0, sticky="w")
-        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o1d,
-                 command=self.on_o1d).grid(row=2, column=1, sticky="ew")
+        ttk.Label(triA_frame, text="Decay").grid(row=2, column=0, sticky="w")
+        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o2d,
+                 command=self.on_o2d).grid(row=2, column=1, sticky="ew")
 
-        ttk.Label(sineB_frame, text="Amount").grid(row=3, column=0, sticky="w")
-        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o1m,
-                 command=self.on_o1m).grid(row=3, column=1, sticky="ew")
+        ttk.Label(triA_frame, text="Amount").grid(row=3, column=0, sticky="w")
+        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o2m,
+                 command=self.on_o2m).grid(row=3, column=1, sticky="ew")
 
-        ttk.Label(sineB_frame, text="Extend").grid(row=4, column=0, sticky="w")
-        tk.Scale(sineB_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.o1x,
-                 command=self.on_o1x).grid(row=4, column=1, sticky="ew")
+        ttk.Label(triA_frame, text="Extend").grid(row=4, column=0, sticky="w")
+        tk.Scale(triA_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.o2x,
+                 command=self.on_o2x).grid(row=4, column=1, sticky="ew")
 
         # ---------- TRI B PITCH (OSC 3) ----------
         triB_frame = ttk.LabelFrame(center_frame, text="Tri B (Osc 3) Pitch Env")
@@ -426,6 +427,18 @@ class DrumGUI:
         except Exception as e:
             self.status_var.set(f"Error: {e}")
             self.ser = None
+
+    def disconnect(self):
+        """Disconnect from serial port to allow flashing Teensy"""
+        if self.ser is not None and self.ser.is_open:
+            try:
+                self.ser.close()
+                self.status_var.set("Disconnected - ready to flash")
+            except Exception as e:
+                self.status_var.set(f"Disconnect error: {e}")
+        else:
+            self.status_var.set("Not connected")
+        self.ser = None
 
     def send_cmd(self, cmd, val):
         if self.ser is None or not self.ser.is_open:

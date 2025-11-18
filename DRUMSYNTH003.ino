@@ -48,6 +48,9 @@ AudioMixer4              mixFinal;       // final mix: kick + snare
 // Drive / distortion
 AudioEffectWaveshaper    driveFX;
 
+// Master volume (final stage)
+AudioMixer4              mixMaster;      // final volume control
+
 // Output
 AudioOutputI2S           i2s1;
 
@@ -78,10 +81,11 @@ AudioConnection patchCord14(noise,            snareNoiseFilter);
 AudioConnection patchCord15(snareNoiseFilter, 1, envSnareNoise, 0);
 AudioConnection patchCord16(envSnareNoise, 0,  mixFinal, 3);
 
-// Drive -> output
+// Drive -> master volume -> output
 AudioConnection patchCord17(mixFinal, 0, driveFX, 0);
-AudioConnection patchCord18(driveFX, 0, i2s1, 0);
-AudioConnection patchCord19(driveFX, 0, i2s1, 1);
+AudioConnection patchCord18(driveFX, 0, mixMaster, 0);
+AudioConnection patchCord19(mixMaster, 0, i2s1, 0);
+AudioConnection patchCord20(mixMaster, 0, i2s1, 1);
 
 // ---------- Triggers ----------
 const int TRIG_KICK  = 2;
@@ -529,12 +533,21 @@ void setup() {
   // Initialize smoothed master gain
   masterGainSmooth = masterGain;
   
-  // Final mix gains
-  float gainTrimInit = masterGainSmooth * masterGainSmooth;
-  mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimInit);  // kick body
-  mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimInit);  // kick noise
-  mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimInit);  // snare tone
-  mixFinal.gain(3, mixFinalBaseGains[3] * gainTrimInit);  // snare noise
+  // Final mix gains (no master volume here - applied at end of chain)
+  mixFinal.gain(0, mixFinalBaseGains[0]);  // kick body
+  mixFinal.gain(1, mixFinalBaseGains[1]);  // kick noise
+  mixFinal.gain(2, mixFinalBaseGains[2]);  // snare tone
+  mixFinal.gain(3, mixFinalBaseGains[3]);  // snare noise
+  
+  // Master volume mixer (final stage)
+  // Initialize all channels to 0, then set channel 0
+  mixMaster.gain(0, 0.0f);
+  mixMaster.gain(1, 0.0f);
+  mixMaster.gain(2, 0.0f);
+  mixMaster.gain(3, 0.0f);
+  // Use linear gain for better control range
+  float gainTrimInit = masterGainSmooth;
+  mixMaster.gain(0, gainTrimInit);
 
   // Initialize drive curve
   updateDriveCurve();
@@ -724,10 +737,10 @@ void loop() {
   mixBody.gain(2, tri1LevelNorm     * 0.6f);
   mixBody.gain(3, tri2LevelNorm     * 0.6f);
 
-  // Update final mix gains to follow master volume
+  // Update master volume (final stage - after all processing)
   // Smooth master gain to prevent clicks when dragging slider
   // Interpolate toward target at ~10ms time constant (smooth but responsive)
-  float smoothRate = 0.15f;  // adjust this: higher = faster, lower = smoother
+  float smoothRate = 0.08f;  // adjust this: higher = faster, lower = smoother
   float diff = masterGain - masterGainSmooth;
   if (fabsf(diff) > 0.0001f) {  // only update if there's a meaningful difference
     masterGainSmooth += diff * smoothRate;
@@ -735,9 +748,11 @@ void loop() {
     masterGainSmooth = masterGain;  // snap to target when very close
   }
   
-  float gainTrimLive = masterGainSmooth * masterGainSmooth;
-  mixFinal.gain(0, mixFinalBaseGains[0] * gainTrimLive);
-  mixFinal.gain(1, mixFinalBaseGains[1] * gainTrimLive);
-  mixFinal.gain(2, mixFinalBaseGains[2] * gainTrimLive);
-  mixFinal.gain(3, mixFinalBaseGains[3] * gainTrimLive);
+  // Apply master volume at the very end of the chain (after distortion)
+  // Always update mixer gain every loop to ensure it's applied
+  float gainTrimLive = masterGainSmooth;
+  mixMaster.gain(0, gainTrimLive);
+  mixMaster.gain(1, 0.0f);
+  mixMaster.gain(2, 0.0f);
+  mixMaster.gain(3, 0.0f);
 }
