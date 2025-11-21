@@ -182,7 +182,7 @@ class DrumGUI:
                  orient="horizontal", variable=self.t1,
                  command=self.on_t1).grid(row=2, column=1, sticky="ew")
 
-        ttk.Label(mix_frame, text="Tri B Level").grid(row=3, column=0, sticky="w")
+        ttk.Label(mix_frame, text="909 Core Level").grid(row=3, column=0, sticky="w")
         tk.Scale(mix_frame, from_=0, to=1, resolution=0.01,
                  orient="horizontal", variable=self.t2,
                  command=self.on_t2).grid(row=3, column=1, sticky="ew")
@@ -222,6 +222,30 @@ class DrumGUI:
                  orient="horizontal", variable=self.ax,
                  command=self.on_ax).grid(row=3, column=1, sticky="ew")
 
+        # ---------- TRANSIENT (TICK/CLAP) ----------
+        transient_frame = ttk.LabelFrame(left_frame, text="Transient")
+        transient_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=5)
+        transient_frame.columnconfigure(1, weight=1)
+
+        self.tl = tk.DoubleVar(value=0.0)   # transient level
+        self.tf = tk.DoubleVar(value=0.7)   # transient cutoff
+        self.td = tk.DoubleVar(value=0.1)   # transient decay
+
+        ttk.Label(transient_frame, text="Level").grid(row=0, column=0, sticky="w")
+        tk.Scale(transient_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.tl,
+                 command=self.on_tl).grid(row=0, column=1, sticky="ew")
+
+        ttk.Label(transient_frame, text="Cutoff").grid(row=1, column=0, sticky="w")
+        tk.Scale(transient_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.tf,
+                 command=self.on_tf).grid(row=1, column=1, sticky="ew")
+
+        ttk.Label(transient_frame, text="Decay").grid(row=2, column=0, sticky="w")
+        tk.Scale(transient_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.td,
+                 command=self.on_td).grid(row=2, column=1, sticky="ew")
+
         # ---------- TRI A PITCH (OSC 2) ----------
         triA_frame = ttk.LabelFrame(center_frame, text="Tri A (Osc 2) Pitch Env")
         triA_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
@@ -258,8 +282,8 @@ class DrumGUI:
                  orient="horizontal", variable=self.o2x,
                  command=self.on_o2x).grid(row=4, column=1, sticky="ew")
 
-        # ---------- TRI B PITCH (OSC 3) ----------
-        triB_frame = ttk.LabelFrame(center_frame, text="Tri B (Osc 3) Pitch Env")
+        # ---------- 909 CORE PITCH (OSC 3) ----------
+        triB_frame = ttk.LabelFrame(center_frame, text="909 Core (Osc 3) Pitch Env")
         triB_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
         triB_frame.columnconfigure(1, weight=1)
 
@@ -498,6 +522,11 @@ class DrumGUI:
         self.send_cmd("NA", self.na.get())
         self.send_cmd("ND", self.nd.get())
 
+        # Transient
+        self.send_cmd("TL", self.tl.get())
+        self.send_cmd("TF", self.tf.get())
+        self.send_cmd("TD", self.td.get())
+
         # Distortion
         self.send_cmd("DR", self.dr.get())
 
@@ -557,6 +586,9 @@ class DrumGUI:
             (self.nl, "NL"), (self.nf, "NF"),
             (self.nq, "NQ"), (self.na, "NA"),
             (self.nd, "ND"),
+
+            # Transient
+            (self.tl, "TL"), (self.tf, "TF"), (self.td, "TD"),
 
             # Drive
             (self.dr, "DR"),
@@ -630,6 +662,11 @@ class DrumGUI:
     def on_nq(self, _): self.send_cmd("NQ", self.nq.get())
     def on_na(self, _): self.send_cmd("NA", self.na.get())
     def on_nd(self, _): self.send_cmd("ND", self.nd.get())
+
+    # Transient
+    def on_tl(self, _): self.send_cmd("TL", self.tl.get())
+    def on_tf(self, _): self.send_cmd("TF", self.tf.get())
+    def on_td(self, _): self.send_cmd("TD", self.td.get())
 
     # Distortion
     def on_dr(self, _): self.send_cmd("DR", self.dr.get())
