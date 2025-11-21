@@ -28,6 +28,11 @@ AudioSynthNoiseWhite     noise;          // shared noise source
 AudioFilterStateVariable noiseFilter;    // kick noise filter
 AudioEffectEnvelope      envNoise;       // kick noise envelope
 
+// Kick: transient (tick/clap at start)
+AudioSynthNoiseWhite     noiseTransient; // separate noise for transient
+AudioFilterStateVariable transientFilter; // high-pass for clicky tick sound
+AudioEffectEnvelope      envTransient;   // very short envelope for transient
+
 // SNARE: tone/body
 AudioSynthWaveform       oscSnareTone;
 AudioEffectEnvelope      envSnareTone;
@@ -39,6 +44,7 @@ AudioEffectEnvelope      envSnareNoise;
 AudioMixer4              mixBody;        // kick body mix (4 oscillators)
 AudioFilterStateVariable oscFilter;      // NEW: filter for summed oscillators
 AudioEffectWaveshaper    oscDrive;       // NEW: distortion for summed oscillators
+AudioMixer4              mixKick;        // kick: body + transient
 AudioMixer4              mixFinal;       // final mix: kick + snare
 
 // Mixers
@@ -66,7 +72,14 @@ AudioConnection patchCord4(oscTri2,  0, mixBody, 3);
 AudioConnection patchCord5(mixBody,       oscFilter);        // summed osc -> filter
 AudioConnection patchCord6(oscFilter, 0,  oscDrive, 0);      // LP out -> drive
 AudioConnection patchCord7(oscDrive,  0,  envAmp,   0);      // driven osc -> amp env
-AudioConnection patchCord8(envAmp,    0,  mixFinal, 0);      // amp env -> final mix
+AudioConnection patchCord8(envAmp,    0,  mixKick,  0);      // amp env -> kick mixer
+
+// Transient path
+AudioConnection patchCord8b(noiseTransient, transientFilter);
+AudioConnection patchCord8c(transientFilter, 2, envTransient, 0); // HP out (2) for clicky tick
+AudioConnection patchCord8d(envTransient, 0, mixKick, 1);    // transient -> kick mixer
+
+AudioConnection patchCord8e(mixKick, 0, mixFinal, 0);        // combined kick -> final mix
 
 // Kick noise
 AudioConnection patchCord9(noise,           noiseFilter);
@@ -122,6 +135,11 @@ float noiseResonanceNorm  = 0.5f; // NQ - rez
 float noiseAttackNorm     = 0.0f; // NA - attack
 float noiseDecayNorm      = 0.2f; // ND - decay
 
+// Transient (tick/clap at start)
+float transientLevelNorm  = 0.0f;  // TL - level
+float transientCutoffNorm = 0.7f;  // TF - high-pass cutoff for clicky sound
+float transientDecayNorm  = 0.1f;  // TD - very short decay
+
 // osc sum filter & dist
 float oscCutoffNorm  = 0.5f;  // OC – cutoff
 float oscQNorm       = 0.3f;  // OQ – resonance
@@ -143,6 +161,8 @@ bool          pitchEnvActive = false;
 // Filter envelope timing
 elapsedMillis filterEnvTimer;
 bool          filterEnvActive = false;
+float         filterEnvCapturedAtkMs = 0.0f;  // Attack time captured at trigger
+float         filterEnvCapturedDecMs = 0.0f;  // Decay time captured at trigger
 
 // Trigger state
 int lastKickTrig  = HIGH;
@@ -357,6 +377,11 @@ void parseSerialLine(const String &line) {
   else if (c0 == 'N' && c1 == 'A') noiseAttackNorm   = val;
   else if (c0 == 'N' && c1 == 'D') noiseDecayNorm    = val;
 
+  // Transient
+  else if (c0 == 'T' && c1 == 'L') transientLevelNorm  = val;
+  else if (c0 == 'T' && c1 == 'F') transientCutoffNorm = val;
+  else if (c0 == 'T' && c1 == 'D') transientDecayNorm  = val;
+
   // Master volume
   else if (c0 == 'M' && c1 == 'V') masterGain = val;
 
@@ -412,9 +437,15 @@ void triggerKick() {
   pitchEnvActive = true;
   filterEnvTimer = 0;
   filterEnvActive = true;
+  
+  // Capture filter envelope attack/decay times at trigger to prevent premature deactivation
+  // if user changes controls while envelope is playing
+  filterEnvCapturedAtkMs = filtEnvAttackNorm * 80.0f;           // 0..80 ms
+  filterEnvCapturedDecMs = 5.0f + filtEnvDecayNorm * 2000.0f;   // 5..2005 ms
 
   envAmp.noteOn();
   envNoise.noteOn();
+  envTransient.noteOn();  // trigger transient tick/clap
 }
 
 void triggerSnare() {
@@ -433,7 +464,8 @@ void setup() {
   AudioMemory(40);
 
   audioShield.enable();
-  audioShield.volume(0.9f);   // as requested
+  // Initialize audioShield volume from masterGain (will be updated in loop)
+  audioShield.volume(masterGain);
 
   // Init oscillators
   oscBody.begin(WAVEFORM_SINE);
@@ -485,6 +517,18 @@ void setup() {
   envNoise.sustain(0.0f);
   envNoise.release(0.0f);
 
+  // Transient (very short tick/clap)
+  envTransient.attack(0.0f);
+  envTransient.decay(5.0f);  // very short, will be updated in loop
+  envTransient.sustain(0.0f);
+  envTransient.release(0.0f);
+
+  noiseTransient.amplitude(0.0f);  // will be updated in loop
+
+  transientFilter.frequency(3000.0f);  // high-pass for clicky sound
+  transientFilter.resonance(1.0f);
+  transientFilter.octaveControl(2.0f);  // high-pass mode
+
   // Noise filters
   noise.amplitude(noiseLevelNorm);
 
@@ -533,21 +577,25 @@ void setup() {
   // Initialize smoothed master gain
   masterGainSmooth = masterGain;
   
+  // Kick mixer (body + transient)
+  mixKick.gain(0, 1.0f);   // kick body
+  mixKick.gain(1, transientLevelNorm * 0.5f);  // transient (will be updated in loop)
+  mixKick.gain(2, 0.0f);
+  mixKick.gain(3, 0.0f);
+
   // Final mix gains (no master volume here - applied at end of chain)
-  mixFinal.gain(0, mixFinalBaseGains[0]);  // kick body
+  mixFinal.gain(0, mixFinalBaseGains[0]);  // kick (body + transient combined)
   mixFinal.gain(1, mixFinalBaseGains[1]);  // kick noise
   mixFinal.gain(2, mixFinalBaseGains[2]);  // snare tone
   mixFinal.gain(3, mixFinalBaseGains[3]);  // snare noise
   
   // Master volume mixer (final stage)
-  // Initialize all channels to 0, then set channel 0
-  mixMaster.gain(0, 0.0f);
+  // Initialize all channels - mixer just passes signal through
+  // Actual volume control is via audioShield.volume()
+  mixMaster.gain(0, 1.0f);
   mixMaster.gain(1, 0.0f);
   mixMaster.gain(2, 0.0f);
   mixMaster.gain(3, 0.0f);
-  // Use linear gain for better control range
-  float gainTrimInit = masterGainSmooth;
-  mixMaster.gain(0, gainTrimInit);
 
   // Initialize drive curve
   updateDriveCurve();
@@ -633,13 +681,40 @@ void loop() {
   float nAttackMs = noiseAttackNorm * 500.0f;               // 0..60 ms
   float nDecayMs  = 5.0f + noiseDecayNorm * 3000.0f;        // 5..500 ms
 
+  envNoise.attack(nAttackMs);
+  envNoise.decay(nDecayMs);
+  envNoise.sustain(0.0f);
+  envNoise.release(0.0f);
+
+  // Transient mapping (very short tick/clap)
+  noiseTransient.amplitude(transientLevelNorm * 0.4f);  // scale level
+
+  // High-pass cutoff for clicky tick sound: 2000 Hz to 18000 Hz
+  float transientFreq = 2000.0f + transientCutoffNorm * 16000.0f;
+  transientFilter.frequency(transientFreq);
+
+  // Very short decay: 1 ms to 30 ms
+  float transientDecayMs = 1.0f + transientDecayNorm * 29.0f;
+  envTransient.attack(0.0f);
+  envTransient.decay(transientDecayMs);
+  envTransient.sustain(0.0f);
+  envTransient.release(0.0f);
+
+  // Update kick mixer gains
+  mixKick.gain(0, 1.0f);   // kick body always at 1.0
+  mixKick.gain(1, transientLevelNorm * 0.5f);  // transient level
+
     // --- OSC tone shaping (filter + distortion) ---
 
   // Cutoff: keep it more kick-focused and less fizz
   // 0..1 => ~80 Hz .. ~4000 Hz
   float oscCutHz = 80.0f + oscCutoffNorm * 3920.0f;
-  float filtAtkMs = filtEnvAttackNorm * 80.0f;           // 0..80 ms
-  float filtDecMs = 5.0f + filtEnvDecayNorm * 2000.0f;   // 5..2005 ms
+  
+  // Use captured attack/decay times for envelope computation and deactivation check
+  // This prevents premature deactivation if user changes FA/FD controls while playing
+  float filtAtkMs = filterEnvActive ? filterEnvCapturedAtkMs : (filtEnvAttackNorm * 80.0f);
+  float filtDecMs = filterEnvActive ? filterEnvCapturedDecMs : (5.0f + filtEnvDecayNorm * 2000.0f);
+  
   float filterEnv = filterEnvActive ? computeSimpleAD(filterEnvTimer, filtAtkMs, filtDecMs) : 0.0f;
   float envSweepHz = filtEnvAmountNorm * 4000.0f * filterEnv;  // up to +4 kHz
   oscFilter.frequency(oscCutHz + envSweepHz);
@@ -749,10 +824,14 @@ void loop() {
   }
   
   // Apply master volume at the very end of the chain (after distortion)
-  // Always update mixer gain every loop to ensure it's applied
+  // Use both mixer and audioShield for reliable control
   float gainTrimLive = masterGainSmooth;
-  mixMaster.gain(0, gainTrimLive);
+  // Set mixer gain (keep at 1.0 for signal pass-through)
+  mixMaster.gain(0, 1.0f);
   mixMaster.gain(1, 0.0f);
   mixMaster.gain(2, 0.0f);
   mixMaster.gain(3, 0.0f);
+  // Use audioShield volume for actual master volume control (more reliable)
+  // Map 0.0-1.0 to 0.0-1.0 range for audioShield
+  audioShield.volume(gainTrimLive);
 }

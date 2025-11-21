@@ -1,8 +1,10 @@
 /*
- * DRUMSYNTH005.ino
- * Version: 1.1.1
+ * DRUMSYNTH006.ino
+ * Version: 1.1.1 (Snapshot of DRUMSYNTH005)
  * 
  * Teensy 4.x Drum Synthesizer - Kick/Snare with 909-style core
+ * 
+ * This is a snapshot of DRUMSYNTH005.ino - the working version before further changes.
  * 
  * Recent Changes (v1.1.1):
  * - Increased smoothing for MAIN VOLUME and OSC DISTORT sliders (0.03 rate) to eliminate clicking/poping when dragging
@@ -770,3 +772,4 @@ void loop() {
     mixFinal.gain(i, mixFinalBaseGains[i] * masterGainSmooth);
   }
 }
+
