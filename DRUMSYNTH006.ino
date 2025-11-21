@@ -1,12 +1,15 @@
 /*
  * DRUMSYNTH006.ino
- * Version: 1.1.1 (Snapshot of DRUMSYNTH005)
+ * Version: 1.2.0
  * 
  * Teensy 4.x Drum Synthesizer - Kick/Snare with 909-style core
  * 
- * This is a snapshot of DRUMSYNTH005.ino - the working version before further changes.
+ * Recent Changes (v1.2.0):
+ * - Fixed 909 core pitch envelope: now sweeps DOWN from high (200-250 Hz) to low (45-65 Hz) fundamental
+ *   Classic 909 kick sound: starts high and sweeps down, not up
+ * - Further increased smoothing for MAIN VOLUME slider (0.008 rate) to eliminate clicks
  * 
- * Recent Changes (v1.1.1):
+ * Previous Changes (v1.1.1):
  * - Increased smoothing for MAIN VOLUME and OSC DISTORT sliders (0.03 rate) to eliminate clicking/poping when dragging
  * 
  * Previous Changes (v1.1.0):
@@ -20,7 +23,7 @@
  * - Filter envelope timing fixes to prevent premature deactivation
  */
 
-// DrumSynth005NewCore - Teensy 4.x kick/snare with 909-style core on osc3
+// DrumSynth006 - Teensy 4.x kick/snare with fixed 909-style core on osc3
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -326,33 +329,36 @@ float computePitchFreq(const PitchEnv &p, float tMs) {
 }
 
 // 909-style core pitch envelope for Osc 3 (Tri2 core)
-// Uses a much narrower range so it stays in that "compressed 909" zone.
+// Classic 909 kick: starts HIGH and sweeps DOWN to fundamental
 float compute909CoreFreq(const PitchEnv &p, float tMs) {
-  // Base: lock around classic 909-ish region
-  // p.base ~0..1  =>  40..70 Hz
-  float baseHz = 40.0f + p.base * 30.0f;
+  // Base: final fundamental frequency (what it settles to)
+  // p.base ~0..1  =>  45..65 Hz (typical 909 range)
+  float baseHz = 45.0f + p.base * 20.0f;
 
-  // Very fast attack, short decay for "thump"
-  // p.attack => 0..1  =>  0..5 ms
-  float atkMs = p.attack * 5.0f;
+  // Very fast attack (almost instant)
+  // p.attack => 0..1  =>  0..2 ms
+  float atkMs = p.attack * 2.0f;
 
-  // p.decay => 0..1  =>  40..160 ms
-  float decMs = 40.0f + p.decay * 120.0f;
+  // p.decay => 0..1  =>  30..120 ms (909 is fairly quick)
+  float decMs = 30.0f + p.decay * 90.0f;
   if (decMs < 1.0f) decMs = 1.0f;
 
-  // Amount: how far above base we sweep at the very start
-  // p.amount => 0..1  =>  0..80 Hz
-  float amtHz = p.amount * 80.0f;
+  // Amount: starting frequency offset above base
+  // p.amount => 0..1  =>  150..250 Hz (classic 909 starts around 200-250 Hz)
+  float startOffsetHz = 150.0f + p.amount * 100.0f;
+  float startHz = baseHz + startOffsetHz;
 
-  // Simple attack/decay envelope
-  float env = 0.0f;
+  // Envelope: starts at 1.0, decays to 0.0
+  // When env=1: at startHz (high)
+  // When env=0: at baseHz (low fundamental)
+  float env = 1.0f;
   if (atkMs > 0.0f && tMs < atkMs) {
-    env = tMs / atkMs;         // 0 -> 1
+    env = 1.0f - (tMs / atkMs);  // 1 -> 1 (or slight fade if attack > 0)
   } else {
     float td = tMs - atkMs;
     if (td < 0.0f) td = 0.0f;
     if (td < decMs) {
-      env = 1.0f - (td / decMs);  // 1 -> 0
+      env = 1.0f - (td / decMs);  // 1 -> 0 (decay)
     } else {
       env = 0.0f;
     }
@@ -361,8 +367,9 @@ float compute909CoreFreq(const PitchEnv &p, float tMs) {
   // Slightly square the envelope for more punch at the start
   env = env * env;
 
-  float freq = baseHz + env * amtHz;
-  if (freq < 20.0f) freq = 20.0f;   // keep it in bass range
+  // Sweep DOWN from startHz to baseHz as envelope decays
+  float freq = baseHz + (startHz - baseHz) * env;
+  if (freq < 20.0f) freq = 20.0f;   // safety clamp
   return freq;
 }
 
@@ -762,8 +769,8 @@ void loop() {
   mixBody.gain(2, tri1LevelNorm     * 0.6f);
   mixBody.gain(3, tri2LevelNorm     * 0.6f);
 
-  // Smooth master volume (increased smoothing to prevent clicks)
-  float smoothRate = 0.03f;  // slower smoothing for smoother transitions
+  // Smooth master volume (much slower smoothing to eliminate clicks)
+  float smoothRate = 0.008f;  // very slow smoothing (0.8% per update) for click-free transitions
   float diff = masterGain - masterGainSmooth;
   masterGainSmooth += diff * smoothRate;
 
@@ -772,4 +779,3 @@ void loop() {
     mixFinal.gain(i, mixFinalBaseGains[i] * masterGainSmooth);
   }
 }
-
