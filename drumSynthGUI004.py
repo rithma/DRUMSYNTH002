@@ -166,6 +166,7 @@ class DrumGUI:
         self.t1 = tk.DoubleVar(value=0.0)
         self.t2 = tk.DoubleVar(value=0.0)
         self.kr = tk.DoubleVar(value=0.5)
+        self.fm = tk.DoubleVar(value=0.0)  # FM modulation (Sine B modulates Sine A)
 
         ttk.Label(mix_frame, text="Sine A Level").grid(row=0, column=0, sticky="w")
         tk.Scale(mix_frame, from_=0, to=1, resolution=0.01,
@@ -191,6 +192,11 @@ class DrumGUI:
         tk.Scale(mix_frame, from_=0, to=1, resolution=0.01,
                  orient="horizontal", variable=self.kr,
                  command=self.on_kr).grid(row=4, column=1, sticky="ew")
+
+        ttk.Label(mix_frame, text="FM (B→A)").grid(row=5, column=0, sticky="w")
+        tk.Scale(mix_frame, from_=0, to=1, resolution=0.01,
+                 orient="horizontal", variable=self.fm,
+                 command=self.on_fm).grid(row=5, column=1, sticky="ew")
 
         # ---------- AMP A FRAME ----------
         amp_frame = ttk.LabelFrame(left_frame, text="AMP A (Kick Amp Env)")
@@ -371,7 +377,7 @@ class DrumGUI:
         self.od = tk.DoubleVar(value=0.2)   # distortion
         self.fa = tk.DoubleVar(value=0.0)   # filter env attack
         self.fd = tk.DoubleVar(value=0.4)   # filter env decay
-        self.fm = tk.DoubleVar(value=0.5)   # filter env amount
+        self.fea = tk.DoubleVar(value=0.5)   # filter env amount (renamed from fm to avoid conflict)
         self.mv = tk.DoubleVar(value=0.12)  # master volume
 
         oscTone_frame = ttk.LabelFrame(right_frame, text="OSC Tone (Post-Osc Mix)")
@@ -409,8 +415,8 @@ class DrumGUI:
 
         ttk.Label(filtEnv_frame, text="Amount").grid(row=2, column=0, sticky="w")
         tk.Scale(filtEnv_frame, from_=0, to=1, resolution=0.01,
-                 orient="horizontal", variable=self.fm,
-                 command=self.on_fm).grid(row=2, column=1, sticky="ew")
+                 orient="horizontal", variable=self.fea,
+                 command=self.on_fea).grid(row=2, column=1, sticky="ew")
 
         # ---------- RANDOMIZATION ----------
         rand_frame = ttk.LabelFrame(right_frame, text="Randomization")
@@ -480,6 +486,7 @@ class DrumGUI:
         self.send_cmd("T1", self.t1.get())
         self.send_cmd("T2", self.t2.get())
         self.send_cmd("KR", self.kr.get())
+        self.send_cmd("FX", self.fm.get())  # FM modulation
 
         # Amp A
         self.send_cmd("AA", self.aa.get())
@@ -536,7 +543,7 @@ class DrumGUI:
         self.send_cmd("OD", self.od.get())
         self.send_cmd("FA", self.fa.get())
         self.send_cmd("FD", self.fd.get())
-        self.send_cmd("FM", self.fm.get())
+        self.send_cmd("FM", self.fea.get())
         self.send_cmd("MV", self.mv.get())
 
     # --------------- RANDOMIZATION (controlled) ---------------
@@ -546,10 +553,20 @@ class DrumGUI:
         if depth <= 0.0:
             return
 
-        # Helper to blend old->random based on depth
+        # Helper to randomize around current value based on depth
+        # depth controls how far from current value it can randomize
+        # depth=0.0: no change, depth=0.5: ±50% range, depth=1.0: fully random (0.0-1.0)
         def rblend(v):
-            r = random.random()
-            return depth * r + (1.0 - depth) * v
+            if depth >= 1.0:
+                # Fully random across entire range
+                return random.random()
+            else:
+                # Randomize within ±(depth * 0.5) range around current value
+                # Clamped to 0.0-1.0 bounds
+                half_range = depth * 0.5
+                low_bound = max(0.0, v - half_range)
+                high_bound = min(1.0, v + half_range)
+                return low_bound + random.random() * (high_bound - low_bound)
 
         # List of (var, command) pairs
         params = [
@@ -557,6 +574,7 @@ class DrumGUI:
             (self.k1, "K1"), (self.k2, "K2"),
             (self.t1, "T1"), (self.t2, "T2"),
             (self.kr, "KR"),
+            (self.fm, "FX"),  # FM modulation
 
             # Amp A
             (self.aa, "AA"), (self.ad, "AD"),
@@ -590,16 +608,16 @@ class DrumGUI:
             # Transient
             (self.tl, "TL"), (self.tf, "TF"), (self.td, "TD"),
 
-            # Drive
-            (self.dr, "DR"),
+            # Note: Drive Amount (DR) excluded from randomization to prevent dangerous loudness
 
             # OSC Tone Shaper
-            (self.oc, "OC"), (self.oq, "OQ"), (self.od, "OD"),
+            (self.oc, "OC"), (self.oq, "OQ"),
+            # Note: OSC Distort (OD) excluded from randomization to prevent dangerous loudness
 
             # Filter Envelope
-            (self.fa, "FA"), (self.fd, "FD"), (self.fm, "FM"),
+            (self.fa, "FA"), (self.fd, "FD"), (self.fea, "FM"),
 
-            # Master volume (optional for randomization?)
+            # Note: Master volume (MV) excluded from randomization to prevent dangerous loudness
         ]
 
         for var, cmd in params:
@@ -621,6 +639,7 @@ class DrumGUI:
     def on_t1(self, _): self.send_cmd("T1", self.t1.get())
     def on_t2(self, _): self.send_cmd("T2", self.t2.get())
     def on_kr(self, _): self.send_cmd("KR", self.kr.get())
+    def on_fm(self, _): self.send_cmd("FX", self.fm.get())  # FM modulation
 
     # Amp A
     def on_aa(self, _): self.send_cmd("AA", self.aa.get())
@@ -679,7 +698,7 @@ class DrumGUI:
     # Filter envelope
     def on_fa(self, _): self.send_cmd("FA", self.fa.get())
     def on_fd(self, _): self.send_cmd("FD", self.fd.get())
-    def on_fm(self, _): self.send_cmd("FM", self.fm.get())
+    def on_fea(self, _): self.send_cmd("FM", self.fea.get())  # Filter envelope amount
 
     # Master volume
     def on_mv(self, _): self.send_cmd("MV", self.mv.get())

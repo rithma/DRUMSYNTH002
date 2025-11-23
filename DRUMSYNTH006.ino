@@ -60,8 +60,8 @@ float computeSimpleAD(float tMs, float attackMs, float decayMs) {
 // ---------- Audio objects ----------
 
 // Kick: body oscillators
-AudioSynthWaveform       oscBody;        // Sine A (osc 0)
-AudioSynthWaveform       oscBody2;       // Sine B (osc 1)
+AudioSynthWaveform       oscBody;        // Sine A (osc 0) - carrier
+AudioSynthWaveform       oscBody2;       // Sine B (osc 1) - modulator
 AudioSynthWaveform       oscTri1;        // Tri A  (osc 2)
 AudioSynthWaveform       oscTri2;        // Osc 3: 909 core / helper
 AudioEffectEnvelope      envAmp;         // AMP A (kick amp envelope)
@@ -157,6 +157,9 @@ float tri2LevelNorm     = 0.4f; // T2 – 909 core level
 
 // Sine B ratio
 float osc2RatioNorm     = 0.5f; // KR – 0.5..3x
+
+// FM modulation (Sine B modulates Sine A)
+float fmAmountNorm      = 0.0f; // FM – 0..1 (0 = no modulation, 1 = full modulation)
 
 // Pitch envelopes for 4 oscillators
 PitchEnv oscEnv[4];
@@ -396,6 +399,13 @@ void parseSerialLine(const String &line) {
   else if (c0 == 'T' && c1 == '1') tri1LevelNorm     = val;
   else if (c0 == 'T' && c1 == '2') tri2LevelNorm     = val;
   else if (c0 == 'K' && c1 == 'R') osc2RatioNorm     = val;
+  
+  // FM modulation (Sine B modulates Sine A)
+  else if (c0 == 'F' && c1 == 'X') {
+    fmAmountNorm = val;  // FX - FM cross-modulation
+    Serial.print("FX received: fmAmountNorm = ");
+    Serial.println(fmAmountNorm, 3);
+  }
 
   // AMP A envelope
   else if (c0 == 'A' && c1 == 'A') ampAAttackNorm    = val;
@@ -645,7 +655,33 @@ void loop() {
   if (f2 < 5.0f) f2 = 5.0f;
   if (f3 < 5.0f) f3 = 5.0f;
 
-  oscBody.frequency(f0);
+  // FM modulation: Sine B modulates Sine A
+  // fmAmount = 0: no modulation (f0 unchanged, FM completely off)
+  // fmAmount = 1: full modulation (maximum sidebands)
+  
+  float f0_modulated = f0;
+  
+  // Only apply FM if fmAmountNorm is above threshold
+  if (fmAmountNorm > 0.001f) {
+    // Modulation index: how much the modulator affects the carrier
+    // Scale 0..1 to 0..5 for more noticeable FM effect
+    float modIndex = fmAmountNorm * 5.0f;  // 0..5 modulation index range (increased from 3.0)
+    
+    // Calculate instantaneous FM frequency: f_carrier + I * f_mod * cos(2π * f_mod * t)
+    // Using elapsed time in seconds for phase calculation
+    float tSec = tMs / 1000.0f;
+    float modulatorPhase = 2.0f * 3.14159f * f1 * tSec;
+    float fmOffset = modIndex * f1 * cosf(modulatorPhase);
+    
+    f0_modulated = f0 + fmOffset;
+    
+    // Clamp to reasonable range
+    if (f0_modulated < 5.0f) f0_modulated = 5.0f;
+    if (f0_modulated > 500.0f) f0_modulated = 500.0f;
+  }
+
+  // Set frequencies
+  oscBody.frequency(f0_modulated);
   oscBody2.frequency(f1);
   oscTri1.frequency(f2);
   oscTri2.frequency(f3);
