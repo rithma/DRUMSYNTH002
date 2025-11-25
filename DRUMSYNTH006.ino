@@ -655,36 +655,42 @@ void loop() {
   if (f2 < 5.0f) f2 = 5.0f;
   if (f3 < 5.0f) f3 = 5.0f;
 
-  // FM modulation: Sine B modulates Sine A
-  // fmAmount = 0: no modulation (f0 unchanged, FM completely off)
-  // fmAmount = 1: full modulation (maximum sidebands)
-  
-  float f0_modulated = f0;
-  
-  // Only apply FM if fmAmountNorm is above threshold
-  if (fmAmountNorm > 0.001f) {
-    // Modulation index: how much the modulator affects the carrier
-    // Scale 0..1 to 0..5 for more noticeable FM effect
-    float modIndex = fmAmountNorm * 5.0f;  // 0..5 modulation index range (increased from 3.0)
-    
-    // Calculate instantaneous FM frequency: f_carrier + I * f_mod * cos(2π * f_mod * t)
-    // Using elapsed time in seconds for phase calculation
-    float tSec = tMs / 1000.0f;
-    float modulatorPhase = 2.0f * 3.14159f * f1 * tSec;
-    float fmOffset = modIndex * f1 * cosf(modulatorPhase);
-    
-    f0_modulated = f0 + fmOffset;
-    
-    // Clamp to reasonable range
-    if (f0_modulated < 5.0f) f0_modulated = 5.0f;
-    if (f0_modulated > 500.0f) f0_modulated = 500.0f;
-  }
 
-  // Set frequencies
-  oscBody.frequency(f0_modulated);
-  oscBody2.frequency(f1);
-  oscTri1.frequency(f2);
-  oscTri2.frequency(f3);
+
+  //START FM SECTION ----------------------------------------------------------------
+ // --- FM: Sine A (oscBody) modulates Sine B (oscBody2) ---
+// f0 = Sine A base pitch (carrier / modulator source)
+// f1 = Sine B base pitch (the one we will modulate)
+
+float f0_carrier = f0;   // Sine A stays "clean" / core
+float f1_mod      = f1;  // This will get FM applied
+
+if (fmAmountNorm > 0.001f) {
+  // Make FM depth curvey so low values are subtle, high values get wild
+  float depth = fmAmountNorm * fmAmountNorm;   // square for better resolution near 0
+  float modIndex = depth * 5.0f;               // tweak this for overall FM strength (0..3-ish)
+
+  // Time in seconds for phase
+  float tSec = tMs * 0.001f;
+
+  // Use Sine A frequency as the modulator rate
+  float modulatorPhase = 2.0f * 3.14159f * f0_carrier * tSec;
+  float fmOffset = modIndex * f0_carrier * cosf(modulatorPhase);
+
+  f1_mod = f1 + fmOffset;
+
+  // Clamp Sine B to a sane range so it doesn’t go ultrasonic / subsonic
+  if (f1_mod < 20.0f)  f1_mod = 20.0f;
+  if (f1_mod > 1000.0f) f1_mod = 1000.0f;
+}
+
+// Set frequencies: now A is stable, B is FM’d by A
+oscBody.frequency(f0_carrier);
+oscBody2.frequency(f1_mod);
+oscTri1.frequency(f2);
+oscTri2.frequency(f3);
+
+  //END FM SECTION ----------------------------------------------------------------
 
   // Stop pitch env after a while (accounting for extended tails)
   float maxDec = 0.0f;
